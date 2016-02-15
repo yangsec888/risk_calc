@@ -110,8 +110,7 @@ Contact the author at 'Yang.Li@owasp.org'
 
 
 Disclaimer:
-The program is covered by Gnu GPL v2.0 license. Please indicate the original source if you want to reuse part of my code. 
-The program is provided as-if and use at your own risk.
+The program is covered by Apache v2.0 license: http://www.apache.org/licenses/LICENSE-2.0
 
 
 
