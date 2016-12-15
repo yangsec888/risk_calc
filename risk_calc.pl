@@ -52,6 +52,8 @@
 use Getopt::Long qw/:config bundling_override no_ignore_case/;
 use Net::CIDR;
 use Socket;
+use Data::Dumper;
+
 ########################################################################
 # Program command argument check
 ########################################################################
@@ -318,18 +320,21 @@ sub parse_fw () {
 	print "\nProcessing Cisco firewall configuration file: $conf ...\n";
 	my %AG; # access-group
 	@access_group_entries=applied_access_group_entry ($conf);					# look for applied access-group(s) as starting point
+	my $cnt_ag = $#access_group_entries + 1;
+	print "Identify protected interfaces: $cnt_ag " if $verbose;
 	foreach (@access_group_entries) {
 		chomp;
 		@ag=split(/\s+/,$_);
-		$AG{$ag[4]}=$ag[1];									# interface => ag_name hea
+		$AG{$ag[4]}=$ag[1];									# interface => ag_name
+		print "\nInterface: $ag[4], Protected by ACL Group: $ag[1]" if $verbose;
 	}
 	foreach my $key (sort keys %AG) {
-		if ($key !~ /inside/i) {								# ignore outbound ACL by default
-			print "Protected interface: $key <= ACL Group: $AG{$key}\n";
+	#	if ($key !~ /inside/i) {								# ignore outbound ACL by default
+			print "\nProtected interface: $key <= ACL Group: $AG{$key}\n";
 			# pass fw config file name,  access group name, and interface name; return # acls in access group
 			my $count = parse_access_group($conf,$AG{$key}, $key);
 			$cnt_fw_acls+=$count;
-		}
+	#	}
 	}
 	print "Total ACLs audited in $conf: $cnt_fw_acls \n";
 	print "Done!\n";
@@ -499,6 +504,7 @@ sub parse_access_list() {
 	chomp;
 	my $current_acl_entry=$_[3];						# save a copy of the original 'ACL'
 	if ($verbose) { print "\nProcessing line: $_[3]\n"; }
+	if ($current_acl_entry =~ /inactive/) { next; } # Skip inactive ACL
 	$current_acl_entry=~s/\slog.*$//g;					# get rid of postfix log option portion of ACL
 	$current_acl_entry=~s/access-list (.)* (|extended )permit\s+//g;	# get rid of prefix "access-list xxx [extended] permit"
 	if ($verbose) { print "ACL Compact Format: $current_acl_entry", "\n"; }	# debugging checkpoint start here
@@ -866,8 +872,10 @@ sub object_group_lookup () {
 			if ($line =~ /^\s+(description|remark)/i) { next; }		# skip on "description xxxx", "access-list xxxx remark xxxx" lines
 			$line=~s/^\s+//g;
 			my @LINE=split(/\s+/,$line);
+			print Dumper(@LINE) if $verbose;
+			print "Var1: $LINE[0]\n" if $verbose;
 			#if ($verbose) {
-			#	foreach (@LINE) { print $_, ","; } 
+			#	foreach (@LINE) { print $_, ","; }
 			#}
 			if ($LINE[0] =~ /(group-object|network-object)/) {			# recursive function is used to process nested "group-object", "network-object"
 				my @B=object_group_lookup($LINE[1],$fw_conf);
@@ -881,9 +889,10 @@ sub object_group_lookup () {
 					$blk=$ip."/32";
 				}
 				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
-			} elsif ($LINE[1] eq "fqdn") {
+			} elsif ($LINE[0] eq "fqdn") {
 				my $blk;
 				my $ip = inet_ntoa(inet_aton($LINE[2]));  # perform nslookup on fqdn by using Socket module function 'inet_ntoa'
+				#my $ip = inet_ntoa(inet_aton($LINE[3])) unless $ip;  # perform nslookup on fqdn by using Socket module function 'inet_ntoa'
 				$blk=$ip."/32";
 				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
 			} elsif ($LINE[1] eq "subnet") {
@@ -897,7 +906,7 @@ sub object_group_lookup () {
 				my $blk=Net::CIDR::addrandmask2cidr($ip,$LINE[2]);
 				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
 			} else {
-				die "Problem processing 2: $line\n";
+				die "Problem processing 2:  $LINE[0]\n";
 			}
 		} elsif ($recording && ($obj_type eq "service")) {
 			if ($line =~ /^\s+(description|remark)/i) { next; } 		# skip on "description xxxx", or "access-list Outside-In remark xxxx" lines
@@ -918,7 +927,7 @@ sub object_group_lookup () {
 		}
 	}
 	close(IN3);
-	print "Object group lookup done.\n" if $verbose;
+	print "Object group lookup done: $obj_gp_name\n" if $verbose;
 	if ($obj_type eq "network") {
 		return @BLOCKS;
 	} elsif ($obj_type eq "service") {
@@ -1174,8 +1183,7 @@ sub print_banner {
   | _ \  |_ _|  / __| | |/ /         / __|  /   \  | |    / __|
   |   /   | |   \__ \ | ' <    ___  | (__   | - |  | |__ | (__
   |_|_\  |___|  |___/ |_|\_\  |___|  \___|  |_|_|  |____| \___|
-_|"""""||"""""||"""""||"""""||"""""||"""""||"""""||"""""||"""""|
-"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'
+  |"""""||"""""||"""""||"""""||"""""||"""""||"""""||"""""||"""""|
 
 ASCII
 	print "Version: ", $ver, "\n", "Designed and Developed by: ", $author, "\n";
