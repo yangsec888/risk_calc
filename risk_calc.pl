@@ -864,7 +864,7 @@ sub object_group_lookup () {
 			$recording++;
 			if ($line =~ /^(object-group|object)\s(service|network)\s/gi) {
 				$obj_type=$2;
-				#print "Object type: $obj_type\n" if $verbose
+				print "Object type: $obj_type\n" if $verbose;
 			}
 			next;
 		}
@@ -873,7 +873,7 @@ sub object_group_lookup () {
 			$line=~s/^\s+//g;
 			my @LINE=split(/\s+/,$line);
 			print Dumper(@LINE) if $verbose;
-			print "Var1: $LINE[0]\n" if $verbose;
+			#print "Var1: $LINE[0]\n" if $verbose;
 			#if ($verbose) {
 			#	foreach (@LINE) { print $_, ","; }
 			#}
@@ -890,13 +890,22 @@ sub object_group_lookup () {
 				}
 				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
 			} elsif ($LINE[0] eq "fqdn") {
-				my $blk;
-				my $ip = inet_ntoa(inet_aton($LINE[2]));  # perform nslookup on fqdn by using Socket module function 'inet_ntoa'
+				my $blk, $ip;
+				if ($LINE[2] =~ /\d+\.\d+\.\d+\.\d+/) {
+					$ip = $LINE[2];
+				}	else {
+					$ip = inet_ntoa(inet_aton($LINE[2]));  # perform nslookup on fqdn by using Socket module function 'inet_ntoa'
 				#my $ip = inet_ntoa(inet_aton($LINE[3])) unless $ip;  # perform nslookup on fqdn by using Socket module function 'inet_ntoa'
+				}
 				$blk=$ip."/32";
 				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
-			} elsif ($LINE[1] eq "subnet") {
+			} elsif ($LINE[0] eq "subnet") {
 				my $blk=Net::CIDR::addrandmask2cidr($LINE[2],$LINE[3]);
+				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
+			} elsif ($LINE[0] eq "range") {  # handle syntax 'range 192.168.88.113 192.168.88.116'
+				my $range = $LINE[1]."-".$LINE[2];
+				print "Network Range: $range", "\n" if @verbose;
+				my $blk=Net::CIDR::range2cidr($range);
 				@BLOCKS=Net::CIDR::cidradd($blk,@BLOCKS);
 			} elsif ( ($LINE[1] =~ /\d+\.\d+\.\d+\.\d+/) && ($LINE[2] =~ /\d+\.\d+\.\d+\.\d+/) ) {
 				my $blk=Net::CIDR::addrandmask2cidr($LINE[1],$LINE[2]);
@@ -911,6 +920,7 @@ sub object_group_lookup () {
 		} elsif ($recording && ($obj_type eq "service")) {
 			if ($line =~ /^\s+(description|remark)/i) { next; } 		# skip on "description xxxx", or "access-list Outside-In remark xxxx" lines
 			my @LINE=split(/\s+/,$line);
+			#print Dumper(@LINE) if $verbose;
 			if ($LINE[2] eq "eq") {
 				push (@PORTS,$LINE[3]);
 			} elsif ( $LINE[2] eq "range" ){
@@ -919,6 +929,11 @@ sub object_group_lookup () {
 			} elsif ($LINE[1] eq "group-object") {			# added to process nested "group-object"
 				my @P=object_group_lookup($LINE[2],$fw_conf);
 				push (@PORTS,@P);
+			} elsif ($LINE[1] eq "port-object") {			# added to process nested "group-object"
+				if ($LINE[2] eq "eq") {
+					my $prt = $LINE[3];
+					push (@PORTS, $prt);
+				}
 			} else {
 				die "Problem processing 1: $line\n";
 			}
